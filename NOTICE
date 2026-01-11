@@ -1,0 +1,75 @@
+# NoHoldr Third-Party Notices
+
+> This file lists third-party open-source components used in NoHoldr.  
+> These components are subject to their own license terms, not the NoHoldr Attribution License (NAL).
+
+---
+
+## PDF Processing
+
+| Component | License | Source |
+|-----------|---------|--------|
+| **pdf-lib** | MIT | [github.com/Hopding/pdf-lib](https://github.com/Hopding/pdf-lib) |
+| **PDF.js** | Apache 2.0 | [mozilla.github.io/pdf.js](https://mozilla.github.io/pdf.js/) |
+
+---
+
+## Image Processing
+
+| Component | License | Source |
+|-----------|---------|--------|
+| **Piexifjs** | MIT | [github.com/hMatoba/piexifjs](https://github.com/hMatoba/piexifjs) |
+| **Cropper.js** | MIT | [github.com/fengyuanchen/cropperjs](https://github.com/fengyuanchen/cropperjs) |
+
+---
+
+## Media Processing
+
+| Component | License | Source |
+|-----------|---------|--------|
+| **FFmpeg.wasm** | MIT (wrapper) / LGPL (core) | [github.com/ffmpegwasm/ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) |
+
+> ⚠️ FFmpeg core libraries are LGPL/GPL licensed. Review license terms before distribution.
+
+---
+
+## UI Framework & Styling
+
+| Component | License | Source |
+|-----------|---------|--------|
+| **React** | MIT | [github.com/facebook/react](https://github.com/facebook/react) |
+| **Next.js** | MIT | [github.com/vercel/next.js](https://github.com/vercel/next.js) |
+| **shadcn/ui** | MIT | [ui.shadcn.com](https://ui.shadcn.com) |
+| **Tailwind CSS** | MIT | [github.com/tailwindlabs/tailwindcss](https://github.com/tailwindlabs/tailwindcss) |
+
+---
+
+## Utilities
+
+| Component | License | Source |
+|-----------|---------|--------|
+| **JSZip** | MIT | [github.com/Stuk/jszip](https://github.com/Stuk/jszip) |
+
+---
+
+## Maintainer Notes
+
+**Update this file when:**
+- Adding a new third-party dependency
+- Upgrading to a version with different license terms
+- Removing a dependency
+
+**Include for each component:**
+- Component name
+- License type
+- Source URL
+- Special compliance notes (if any)
+
+---
+
+| Field | Value |
+|-------|-------|
+| **Document** | NoHoldr Third-Party Notices |
+| **Version** | 1.0 |
+| **Last Updated** | January 2025 |
+| **Maintainer** | Deviantkay |
