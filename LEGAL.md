@@ -1,6 +1,6 @@
 # Legal Notice & Responsibility Boundaries
 
-This document clarifies legal responsibilities for AIContentSuite and any derivative works.
+This document clarifies legal responsibilities for NoHoldr and any derivative works.
 
 ---
 
@@ -12,7 +12,7 @@ This document clarifies legal responsibilities for AIContentSuite and any deriva
 
 ## Project Status
 
-AIContentSuite is an **open source project** provided freely for:
+NoHoldr is an **open source project** provided freely for:
 
 - Learning and experimentation
 - Personal and professional use
@@ -118,7 +118,7 @@ This software processes files **locally in your browser**. However:
 For questions about this legal notice:
 
 - **GitHub:** [Deviantkay](https://github.com/Deviantkay)
-- **Repository:** [AIContentSuite](https://github.com/Deviantkay/AIContentSuite)
+- **Repository:** [NoHoldr](https://github.com/Deviantkay/NoHoldr)
 
 ---
 

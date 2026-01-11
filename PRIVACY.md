@@ -49,7 +49,7 @@
 
 ### What Gets Stored Locally
 
-AIContentSuite uses browser `localStorage` only for:
+NoHoldr uses browser `localStorage` only for:
 
 | Data | Purpose | Can You Delete It? |
 |------|---------|-------------------|
@@ -155,7 +155,7 @@ Privacy is achieved by design, not by promises.
 Questions about this privacy model:
 
 - **GitHub:** [Deviantkay](https://github.com/Deviantkay)
-- **Repository:** [AIContentSuite](https://github.com/Deviantkay/AIContentSuite)
+- **Repository:** [NoHoldr](https://github.com/Deviantkay/NoHoldr)
 
 ---
 

@@ -6,7 +6,7 @@
 
 ## Core Principles
 
-AIContentSuite is designed around four non-negotiable principles that guide every feature, design decision, and line of code.
+NoHoldr is designed around four non-negotiable principles that guide every feature, design decision, and line of code.
 
 ### 1. User-First Control
 
@@ -97,4 +97,4 @@ Trust is earned, not claimed.
 
 ---
 
-*This philosophy applies to the original AIContentSuite project by Deviantkay. Forks and derivatives may have different philosophies.*
+*This philosophy applies to the original NoHoldr project by Deviantkay. Forks and derivatives may have different philosophies.*
