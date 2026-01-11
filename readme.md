@@ -1,4 +1,4 @@
-# NoHoldr
+# NoHoldr (Previously AIContentSuite)
 
 Fast file tools that run locally in your browser.
 
