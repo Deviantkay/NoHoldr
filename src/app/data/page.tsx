@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LucideIcon } from "lucide-react";
-import { ArrowLeft, FileJson, FileSpreadsheet, Hash, Code, FileText, Binary, QrCode, Palette } from "lucide-react";
+import { ArrowLeft, FileJson, FileSpreadsheet, Hash, Code, FileText, Binary, QrCode, Palette, KeyRound, ScrollText, Eye, Clock, Braces, LetterText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Tool { name: string; href: string; icon: LucideIcon; ready?: boolean; }
@@ -14,6 +14,12 @@ const dataTools: Tool[] = [
     { name: "Text Diff", href: "/data/diff", icon: FileText, ready: true },
     { name: "QR Code", href: "/data/qr-code", icon: QrCode, ready: true },
     { name: "Color Picker", href: "/data/color-picker", icon: Palette, ready: true },
+    { name: "Password", href: "/data/password", icon: KeyRound, ready: true },
+    { name: "Lorem Ipsum", href: "/data/lorem-ipsum", icon: ScrollText, ready: true },
+    { name: "Markdown", href: "/data/markdown", icon: Eye, ready: true },
+    { name: "Timestamp", href: "/data/timestamp", icon: Clock, ready: true },
+    { name: "Regex", href: "/data/regex", icon: Braces, ready: true },
+    { name: "Word Counter", href: "/data/word-counter", icon: LetterText, ready: true },
 ];
 
 function ToolSection({ title, tools }: { title: string; tools: Tool[] }) {
@@ -41,7 +47,7 @@ export default function DataToolsPage() {
                 </Button>
                 <div>
                     <h1 className="text-xl font-semibold">Data Tools</h1>
-                    <p className="text-xs text-muted-foreground">Text, JSON, CSV utilities</p>
+                    <p className="text-xs text-muted-foreground">Text, JSON, CSV & developer utilities</p>
                 </div>
             </div>
             <ToolSection title="DATA UTILITIES" tools={dataTools} />
