@@ -33,11 +33,13 @@ export default function ExtractAudioPage() {
         if (!file) return;
         setIsProcessing(true);
         setProgress(10);
+        let videoSrcUrl: string | null = null;
 
         try {
             // Create video element to decode
             const video = document.createElement("video");
-            video.src = URL.createObjectURL(file);
+            videoSrcUrl = URL.createObjectURL(file);
+            video.src = videoSrcUrl;
             video.muted = true;
 
             await new Promise<void>((resolve) => {
@@ -59,12 +61,14 @@ export default function ExtractAudioPage() {
             setProgress(90);
 
             const url = URL.createObjectURL(wavBlob);
+            if (outputUrl) URL.revokeObjectURL(outputUrl);
             setOutputUrl(url);
             setProgress(100);
         } catch (error) {
             console.error("Extraction failed:", error);
         }
 
+        if (videoSrcUrl) URL.revokeObjectURL(videoSrcUrl);
         setIsProcessing(false);
     };
 
@@ -117,6 +121,10 @@ export default function ExtractAudioPage() {
         a.href = outputUrl;
         a.download = file.name.replace(/\.[^.]+$/, "") + "_audio.wav";
         a.click();
+        // Revoke after download triggered
+        setTimeout(() => {
+            if (outputUrl) URL.revokeObjectURL(outputUrl);
+        }, 5000);
     };
 
     return (

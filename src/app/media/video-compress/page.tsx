@@ -4,21 +4,26 @@ import { useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { ArrowLeft, Upload, Download, Video, Gauge } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { ArrowLeft, Upload, Download, Video, Gauge, AlertTriangle, Info } from "lucide-react";
+import { downloadFile, formatBytes } from "@/lib/download-manager";
 
 export default function VideoCompressPage() {
     const [file, setFile] = useState<File | null>(null);
     const [quality, setQuality] = useState([50]);
-    const [outputUrl, setOutputUrl] = useState<string | null>(null);
+    const [outputBlob, setOutputBlob] = useState<Blob | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [outputSize, setOutputSize] = useState(0);
+    const [progress, setProgress] = useState(0);
+    const [statusText, setStatusText] = useState("");
+    const [error, setError] = useState<string | null>(null);
+    const abortRef = useRef(false);
 
     const handleFile = useCallback((f: File) => {
         if (!f.type.startsWith("video/")) return;
         setFile(f);
-        setOutputUrl(null);
-        setOutputSize(0);
+        setOutputBlob(null);
+        setError(null);
     }, []);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
@@ -34,27 +39,36 @@ export default function VideoCompressPage() {
     const compress = async () => {
         if (!file) return;
         setIsProcessing(true);
+        setError(null);
+        setOutputBlob(null);
+        setProgress(0);
+        abortRef.current = false;
+        setStatusText("Loading video...");
 
         try {
             const video = document.createElement("video");
-            video.src = URL.createObjectURL(file);
+            const videoUrl = URL.createObjectURL(file);
+            video.src = videoUrl;
             video.muted = true;
 
-            await new Promise<void>((resolve) => {
+            await new Promise<void>((resolve, reject) => {
                 video.onloadedmetadata = () => resolve();
+                video.onerror = () => reject(new Error("Failed to load video"));
             });
+
+            setStatusText(`Compressing (${Math.round(video.duration)}s video)...`);
 
             // Scale down based on quality
             const scale = quality[0] / 100;
             const canvas = document.createElement("canvas");
             canvas.width = Math.round(video.videoWidth * scale);
             canvas.height = Math.round(video.videoHeight * scale);
-            const ctx = canvas.getContext("2d");
+            const ctx = canvas.getContext("2d")!;
 
             const stream = canvas.captureStream(24);
 
             // Lower bitrate for compression
-            const bitrate = Math.round(1000000 * scale); // Lower quality = lower bitrate
+            const bitrate = Math.round(1000000 * scale);
             const recorder = new MediaRecorder(stream, {
                 mimeType: "video/webm",
                 videoBitsPerSecond: bitrate
@@ -62,42 +76,71 @@ export default function VideoCompressPage() {
             const chunks: Blob[] = [];
 
             recorder.ondataavailable = (e) => chunks.push(e.data);
-            recorder.onstop = () => {
-                const blob = new Blob(chunks, { type: "video/webm" });
-                setOutputUrl(URL.createObjectURL(blob));
-                setOutputSize(blob.size);
-                setIsProcessing(false);
-            };
+
+            const resultPromise = new Promise<Blob>((resolve) => {
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: "video/webm" });
+                    resolve(blob);
+                };
+            });
 
             recorder.start();
             video.play();
 
+            const duration = video.duration;
             const drawFrame = () => {
+                if (abortRef.current) {
+                    video.pause();
+                    recorder.stop();
+                    return;
+                }
                 if (video.ended || video.paused) {
                     recorder.stop();
                     return;
                 }
-                ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                setProgress(Math.round((video.currentTime / duration) * 100));
                 requestAnimationFrame(drawFrame);
             };
             drawFrame();
 
             video.onended = () => recorder.stop();
-        } catch (error) {
-            console.error("Compression failed:", error);
+
+            const blob = await resultPromise;
+            URL.revokeObjectURL(videoUrl);
+
+            if (abortRef.current) {
+                setIsProcessing(false);
+                setProgress(0);
+                setStatusText("");
+                return;
+            }
+
+            setOutputBlob(blob);
+            setProgress(100);
+            setStatusText("Done!");
+            setTimeout(() => {
+                setIsProcessing(false);
+                setProgress(0);
+                setStatusText("");
+            }, 800);
+        } catch (err) {
+            console.error("Compression failed:", err);
+            setError(err instanceof Error ? err.message : "Compression failed");
             setIsProcessing(false);
+            setProgress(0);
+            setStatusText("");
         }
     };
 
-    const download = () => {
-        if (!outputUrl || !file) return;
-        const a = document.createElement("a");
-        a.href = outputUrl;
-        a.download = file.name.replace(/\.[^.]+$/, "") + "_compressed.webm";
-        a.click();
+    const cancel = () => {
+        abortRef.current = true;
     };
 
-    const fmt = (b: number) => b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(2) + " MB";
+    const handleDownload = () => {
+        if (!outputBlob || !file) return;
+        downloadFile(outputBlob, file.name.replace(/\.[^.]+$/, "") + "_compressed.webm");
+    };
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-6">
@@ -107,6 +150,15 @@ export default function VideoCompressPage() {
                 </Button>
                 <h1 className="text-lg font-semibold">Compress Video</h1>
             </div>
+
+            {error && (
+                <div className="border rounded-xl p-4 mb-4 bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                        <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+                    </div>
+                </div>
+            )}
 
             {!file ? (
                 <div
@@ -128,10 +180,10 @@ export default function VideoCompressPage() {
                                 <Video className="h-5 w-5 text-blue-500" />
                                 <div>
                                     <span className="text-sm font-medium">{file.name}</span>
-                                    <p className="text-xs text-muted-foreground">Original: {fmt(file.size)}</p>
+                                    <p className="text-xs text-muted-foreground">Original: {formatBytes(file.size)}</p>
                                 </div>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => { setFile(null); setOutputUrl(null); }}>Change</Button>
+                            <Button variant="ghost" size="sm" onClick={() => { setFile(null); setOutputBlob(null); setError(null); }}>Change</Button>
                         </div>
                     </div>
 
@@ -140,29 +192,57 @@ export default function VideoCompressPage() {
                             <label className="text-sm font-medium">Quality / Size</label>
                             <span className="text-sm">{quality[0]}%</span>
                         </div>
-                        <Slider value={quality} onValueChange={setQuality} min={20} max={100} step={10} />
-                        <p className="text-xs text-muted-foreground mt-2">Lower = smaller file, reduced quality</p>
+                        <Slider value={quality} onValueChange={setQuality} min={20} max={100} step={10} disabled={isProcessing} />
+                        <p className="text-xs text-muted-foreground mt-2">Lower = smaller file, reduced quality and resolution</p>
                     </div>
 
-                    {outputUrl && (
+                    <div className="border rounded-xl p-3 mb-4 bg-amber-50/30 dark:bg-amber-950/10 border-amber-200/50 dark:border-amber-800/50">
+                        <div className="flex gap-2">
+                            <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                                Compression runs at playback speed. Output is WebM format (audio not preserved).
+                            </p>
+                        </div>
+                    </div>
+
+                    {isProcessing && (
+                        <div className="mb-4">
+                            <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                <span>{statusText}</span>
+                                <span>{progress}%</span>
+                            </div>
+                            <Progress value={progress} className="h-1.5" />
+                        </div>
+                    )}
+
+                    {outputBlob && (
                         <div className="border rounded-xl p-4 mb-4">
                             <div className="flex items-center gap-2 mb-2">
                                 <Gauge className="h-4 w-4 text-green-500" />
                                 <span className="text-sm font-medium">
-                                    Compressed: {fmt(outputSize)} ({Math.round((1 - outputSize / file.size) * 100)}% smaller)
+                                    Compressed: {formatBytes(outputBlob.size)}
+                                    {file && outputBlob.size < file.size && (
+                                        ` (${Math.round((1 - outputBlob.size / file.size) * 100)}% smaller)`
+                                    )}
                                 </span>
                             </div>
-                            <video src={outputUrl} controls className="w-full rounded-lg" />
+                            <video src={URL.createObjectURL(outputBlob)} controls className="w-full rounded-lg" />
                         </div>
                     )}
 
                     <div className="flex gap-2">
-                        <Button onClick={compress} disabled={isProcessing} className="flex-1 h-11">
-                            {isProcessing ? "Compressing..." : "Compress"}
-                        </Button>
-                        {outputUrl && (
-                            <Button onClick={download} variant="outline" className="h-11">
-                                <Download className="h-4 w-4 mr-2" />Download
+                        {!outputBlob ? (
+                            <>
+                                <Button onClick={compress} disabled={isProcessing} className="flex-1 h-11">
+                                    {isProcessing ? "Compressing..." : "Compress"}
+                                </Button>
+                                {isProcessing && (
+                                    <Button onClick={cancel} variant="outline" className="h-11">Cancel</Button>
+                                )}
+                            </>
+                        ) : (
+                            <Button onClick={handleDownload} className="flex-1 h-11">
+                                <Download className="h-4 w-4 mr-2" />Download Compressed
                             </Button>
                         )}
                     </div>

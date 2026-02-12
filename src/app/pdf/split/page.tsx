@@ -7,9 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, Upload, FileText, Download } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
-import { downloadPdfBytes } from "@/lib/pdf-utils";
+import { downloadFile } from "@/lib/download-manager";
 
 type Mode = "range" | "extract" | "every";
+
+interface SplitResult {
+    name: string;
+    blob: Blob;
+}
 
 export default function SplitPDFPage() {
     const [file, setFile] = useState<File | null>(null);
@@ -22,6 +27,7 @@ export default function SplitPDFPage() {
     const [rangeInput, setRangeInput] = useState("");
     const [extractInput, setExtractInput] = useState("");
     const [everyN, setEveryN] = useState("5");
+    const [splitResults, setSplitResults] = useState<SplitResult[]>([]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); }, []);
     const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); }, []);
@@ -70,6 +76,7 @@ export default function SplitPDFPage() {
         try {
             const source = await PDFDocument.load(await file.arrayBuffer());
             const base = file.name.replace(".pdf", "");
+            const results: SplitResult[] = [];
 
             if (mode === "range") {
                 const ranges = parseRanges(rangeInput);
@@ -79,8 +86,8 @@ export default function SplitPDFPage() {
                     const doc = await PDFDocument.create();
                     const pages = await doc.copyPages(source, ranges[i]);
                     pages.forEach(p => doc.addPage(p));
-                    downloadPdfBytes(await doc.save(), `${base}_part${i + 1}.pdf`);
-                    await new Promise(r => setTimeout(r, 200));
+                    const pdfBytes = await doc.save();
+                    results.push({ name: `${base}_part${i + 1}.pdf`, blob: new Blob([new Uint8Array(pdfBytes).buffer as ArrayBuffer], { type: "application/pdf" }) });
                 }
             } else if (mode === "extract") {
                 const nums = extractInput.split(",").map(p => parseInt(p.trim(), 10) - 1).filter(p => p >= 0 && p < pageCount);
@@ -89,7 +96,8 @@ export default function SplitPDFPage() {
                 const doc = await PDFDocument.create();
                 const pages = await doc.copyPages(source, nums);
                 pages.forEach(p => doc.addPage(p));
-                downloadPdfBytes(await doc.save(), `${base}_extracted.pdf`);
+                const pdfBytes = await doc.save();
+                results.push({ name: `${base}_extracted.pdf`, blob: new Blob([new Uint8Array(pdfBytes).buffer as ArrayBuffer], { type: "application/pdf" }) });
             } else {
                 const n = parseInt(everyN, 10);
                 if (isNaN(n) || n < 1) { setStatus("Invalid number"); setIsProcessing(false); return; }
@@ -100,11 +108,12 @@ export default function SplitPDFPage() {
                     const doc = await PDFDocument.create();
                     const pages = await doc.copyPages(source, indices);
                     pages.forEach(p => doc.addPage(p));
-                    downloadPdfBytes(await doc.save(), `${base}_part${i + 1}.pdf`);
-                    await new Promise(r => setTimeout(r, 200));
+                    const pdfBytes = await doc.save();
+                    results.push({ name: `${base}_part${i + 1}.pdf`, blob: new Blob([new Uint8Array(pdfBytes).buffer as ArrayBuffer], { type: "application/pdf" }) });
                 }
             }
 
+            setSplitResults(results);
             setProgress(100);
             setStatus("Done!");
             setTimeout(() => { setIsProcessing(false); setProgress(0); setStatus(""); }, 1000);
@@ -192,9 +201,30 @@ export default function SplitPDFPage() {
                     )}
 
                     {/* Action */}
-                    <Button onClick={handleSplit} disabled={isProcessing} className="w-full h-11">
-                        <Download className="h-4 w-4 mr-2" />Split & Download
-                    </Button>
+                    {splitResults.length === 0 ? (
+                        <Button onClick={handleSplit} disabled={isProcessing} className="w-full h-11">
+                            <Download className="h-4 w-4 mr-2" />Split PDF
+                        </Button>
+                    ) : (
+                        <div className="space-y-2">
+                            {splitResults.length > 1 && (
+                                <Button onClick={async () => {
+                                    const { downloadAsZip } = await import("@/lib/download-manager");
+                                    await downloadAsZip(splitResults, `${file.name.replace(".pdf", "")}_split.zip`);
+                                }} className="w-full h-11">
+                                    <Download className="h-4 w-4 mr-2" />Download as ZIP ({splitResults.length} files)
+                                </Button>
+                            )}
+                            {splitResults.map((item, i) => (
+                                <Button key={i} onClick={() => downloadFile(item.blob, item.name)} variant="outline" className="w-full justify-between">
+                                    <span className="flex items-center"><Download className="h-4 w-4 mr-2" />{item.name}</span>
+                                </Button>
+                            ))}
+                            <Button variant="ghost" onClick={() => { setSplitResults([]); }} className="w-full">
+                                Split Again
+                            </Button>
+                        </div>
+                    )}
                 </>
             )}
 

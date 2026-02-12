@@ -223,8 +223,7 @@ export default function SmartConvertPage() {
     };
 
     const pdfToImages = async (file: File, mimeType: string, ext: string): Promise<{ name: string; blob: Blob }[]> => {
-        const pdfjsLib = await import("pdfjs-dist");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+        const { pdfjsLib } = await import("@/lib/pdfjs-setup");
 
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -431,10 +430,18 @@ export default function SmartConvertPage() {
     };
 
     const downloadBlob = (name: string, blob: Blob) => {
+        const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
+        a.href = url;
         a.download = name;
         a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+    };
+
+    const downloadAllAsZip = async () => {
+        const { downloadAsZip } = await import("@/lib/download-manager");
+        const baseName = detectedFile?.file.name.replace(/\.[^.]+$/, "") || "converted";
+        await downloadAsZip(convertedBlobs, `${baseName}_converted.zip`);
     };
 
     const formatGroups = detectedFile ? CATEGORY_FORMAT_GROUPS[detectedFile.category] || [] : [];
@@ -534,6 +541,11 @@ export default function SmartConvertPage() {
                             </Button>
                         ) : (
                             <div className="flex-1 space-y-2">
+                                {convertedBlobs.length > 1 && (
+                                    <Button onClick={downloadAllAsZip} className="w-full">
+                                        <Download className="h-4 w-4 mr-2" />Download as ZIP ({convertedBlobs.length} files)
+                                    </Button>
+                                )}
                                 {convertedBlobs.map((item, i) => (
                                     <Button key={i} onClick={() => downloadBlob(item.name, item.blob)} variant="outline" className="w-full justify-start">
                                         <Download className="h-4 w-4 mr-2" />{item.name}

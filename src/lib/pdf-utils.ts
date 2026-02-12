@@ -2,30 +2,21 @@
  * PDF utility functions for browser-based processing
  */
 
+import { downloadFile } from "./download-manager";
+
 /**
  * Converts PDF bytes (Uint8Array) to a Blob that's compatible with strict TypeScript
  */
 export function pdfBytesToBlob(pdfBytes: Uint8Array): Blob {
-    // Use slice to create a proper ArrayBuffer, then cast to satisfy TypeScript
-    // The buffer.slice creates a new ArrayBuffer which is always compatible with Blob
-    const arrayBuffer = pdfBytes.buffer.slice(
-        pdfBytes.byteOffset,
-        pdfBytes.byteOffset + pdfBytes.byteLength
-    ) as ArrayBuffer;
-    return new Blob([arrayBuffer], { type: "application/pdf" });
+    // Ensure we have a plain ArrayBuffer for TypeScript strict mode compatibility
+    const arr = new Uint8Array(pdfBytes);
+    return new Blob([arr.buffer as ArrayBuffer], { type: "application/pdf" });
 }
 
 /**
- * Downloads PDF bytes as a file
+ * Downloads PDF bytes as a file (uses centralized download manager)
  */
 export function downloadPdfBytes(pdfBytes: Uint8Array, filename: string): void {
     const blob = pdfBytesToBlob(pdfBytes);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadFile(blob, filename);
 }
