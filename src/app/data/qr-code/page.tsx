@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Download, Copy, QrCode, Link as LinkIcon, Mail, Wifi, Phone } from "lucide-react";
+import { ArrowLeft, Download, Copy, QrCode, Link as LinkIcon, Mail, Wifi, Phone, ImageIcon, Upload, X } from "lucide-react";
 
 type QRType = "url" | "text" | "email" | "phone" | "wifi";
 
@@ -26,6 +26,10 @@ export default function QRCodePage() {
     const [bgColor, setBgColor] = useState("#ffffff");
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [generated, setGenerated] = useState(false);
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+    const [logoSize, setLogoSize] = useState(22); // percentage of QR size
+    const [logoShape, setLogoShape] = useState<"square" | "circle">("square");
 
     const buildPayload = useCallback(() => {
         switch (type) {
@@ -72,11 +76,50 @@ export default function QRCodePage() {
                 }
             }
 
+            // Draw logo overlay if present
+            if (logoDataUrl) {
+                const img = new window.Image();
+                img.onload = () => {
+                    const logoDim = (size * logoSize) / 100;
+                    const padding = logoDim * 0.12;
+                    const cx = (size - logoDim) / 2;
+                    const cy = (size - logoDim) / 2;
+
+                    // Draw white background behind logo
+                    ctx.fillStyle = bgColor;
+                    if (logoShape === "circle") {
+                        ctx.beginPath();
+                        ctx.arc(size / 2, size / 2, (logoDim + padding * 2) / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        // Clip to circle for logo
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(size / 2, size / 2, logoDim / 2, 0, Math.PI * 2);
+                        ctx.clip();
+                        ctx.drawImage(img, cx, cy, logoDim, logoDim);
+                        ctx.restore();
+                    } else {
+                        const r = logoDim * 0.08; // corner radius
+                        ctx.beginPath();
+                        ctx.roundRect(cx - padding, cy - padding, logoDim + padding * 2, logoDim + padding * 2, r + padding * 0.5);
+                        ctx.fill();
+                        // Draw logo with rounded corners
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.roundRect(cx, cy, logoDim, logoDim, r);
+                        ctx.clip();
+                        ctx.drawImage(img, cx, cy, logoDim, logoDim);
+                        ctx.restore();
+                    }
+                };
+                img.src = logoDataUrl;
+            }
+
             setGenerated(true);
         } catch (err) {
             console.error("QR generation failed:", err);
         }
-    }, [buildPayload, size, fgColor, bgColor]);
+    }, [buildPayload, size, fgColor, bgColor, logoDataUrl, logoSize, logoShape]);
 
     useEffect(() => {
         if (input.trim()) {
@@ -85,7 +128,20 @@ export default function QRCodePage() {
         } else {
             setGenerated(false);
         }
-    }, [input, type, wifiPassword, wifiSecurity, size, fgColor, bgColor, generateQR]);
+    }, [input, type, wifiPassword, wifiSecurity, size, fgColor, bgColor, logoDataUrl, logoSize, logoShape, generateQR]);
+
+    const handleLogoUpload = (f: File) => {
+        if (!f.type.startsWith("image/")) return;
+        setLogoFile(f);
+        const reader = new FileReader();
+        reader.onload = () => setLogoDataUrl(reader.result as string);
+        reader.readAsDataURL(f);
+    };
+
+    const removeLogo = () => {
+        setLogoFile(null);
+        setLogoDataUrl(null);
+    };
 
     const downloadQR = (format: "png" | "jpeg" | "svg") => {
         const canvas = canvasRef.current;
@@ -197,6 +253,75 @@ export default function QRCodePage() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Logo */}
+            <div className="border rounded-xl p-4 mb-4">
+                <h3 className="text-sm font-medium mb-3">Center Logo</h3>
+                {!logoFile ? (
+                    <div
+                        className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/40 transition-colors"
+                        onClick={() => document.getElementById("logo-input")?.click()}
+                    >
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => e.target.files?.[0] && handleLogoUpload(e.target.files[0])}
+                            className="hidden"
+                            id="logo-input"
+                        />
+                        <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground">Upload logo or image (optional)</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                            {logoDataUrl && (
+                                <img src={logoDataUrl} alt="Logo" className="h-10 w-10 object-cover rounded border" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{logoFile.name}</p>
+                                <p className="text-xs text-muted-foreground">{Math.round(logoFile.size / 1024)} KB</p>
+                            </div>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={removeLogo}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs text-muted-foreground">Logo size ({logoSize}%)</label>
+                                <input
+                                    type="range"
+                                    min={10}
+                                    max={35}
+                                    value={logoSize}
+                                    onChange={(e) => setLogoSize(parseInt(e.target.value))}
+                                    className="w-full accent-primary"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-muted-foreground">Shape</label>
+                                <div className="flex gap-1 mt-1">
+                                    <button
+                                        onClick={() => setLogoShape("square")}
+                                        className={`flex-1 py-1.5 text-xs rounded-md border transition-colors ${logoShape === "square" ? "bg-foreground text-background" : ""}`}
+                                    >
+                                        Square
+                                    </button>
+                                    <button
+                                        onClick={() => setLogoShape("circle")}
+                                        className={`flex-1 py-1.5 text-xs rounded-md border transition-colors ${logoShape === "circle" ? "bg-foreground text-background" : ""}`}
+                                    >
+                                        Circle
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground">Tip: Keep logo under 25% for best scan reliability</p>
+                    </div>
+                )}
             </div>
 
             {/* Preview */}
