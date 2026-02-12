@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LucideIcon } from "lucide-react";
-import { ArrowLeft, FileJson, FileSpreadsheet, Hash, Code, FileText, Binary } from "lucide-react";
+import { ArrowLeft, FileJson, FileSpreadsheet, Hash, Code, FileText, Binary, QrCode, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Tool { name: string; href: string; icon: LucideIcon; ready?: boolean; }
@@ -12,6 +12,8 @@ const dataTools: Tool[] = [
     { name: "Base64", href: "/data/base64", icon: Binary, ready: true },
     { name: "URL Encode", href: "/data/url-encode", icon: Code, ready: true },
     { name: "Text Diff", href: "/data/diff", icon: FileText, ready: true },
+    { name: "QR Code", href: "/data/qr-code", icon: QrCode, ready: true },
+    { name: "Color Picker", href: "/data/color-picker", icon: Palette, ready: true },
 ];
 
 function ToolSection({ title, tools }: { title: string; tools: Tool[] }) {

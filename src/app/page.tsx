@@ -10,12 +10,12 @@ import {
 } from "lucide-react";
 
 const tools = [
-  { name: "PDF", href: "/pdf", icon: FileText, desc: "Merge, split, compress", count: "13" },
+  { name: "PDF", href: "/pdf", icon: FileText, desc: "Merge, split, compress", count: "15" },
   { name: "Image", href: "/image", icon: Image, desc: "Crop, resize, convert", count: "8" },
   { name: "Media", href: "/media", icon: Music, desc: "Audio & video", count: "6" },
   { name: "Convert", href: "/convert", icon: ArrowLeftRight, desc: "Smart format converter", count: "New" },
   { name: "Files", href: "/files", icon: FolderArchive, desc: "ZIP, rename, dedupe", count: "5" },
-  { name: "Data", href: "/data", icon: Database, desc: "CSV, JSON, hash", count: "6" },
+  { name: "Data", href: "/data", icon: Database, desc: "CSV, JSON, QR, colors", count: "8" },
   { name: "AI", href: "/ai", icon: Sparkles, desc: "Your API key", count: "4" },
 ];
 

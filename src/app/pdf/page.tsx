@@ -17,7 +17,9 @@ import {
     Eye,
     Layers,
     GraduationCap,
-    ArrowLeft
+    ArrowLeft,
+    ArrowUpDown,
+    Pen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -33,6 +35,7 @@ const organizeTools: Tool[] = [
     { name: "Split", href: "/pdf/split", icon: Split, ready: true },
     { name: "Academic Split", href: "/pdf/academic-split", icon: GraduationCap, ready: true },
     { name: "Remove Pages", href: "/pdf/remove-pages", icon: Trash2, ready: true },
+    { name: "Re-order", href: "/pdf/reorder", icon: ArrowUpDown, ready: true },
     { name: "Rotate", href: "/pdf/rotate", icon: RotateCw, ready: true },
     { name: "Compress", href: "/pdf/compress", icon: Minimize2, ready: true },
 ];
@@ -43,6 +46,7 @@ const convertTools: Tool[] = [
 ];
 
 const secureTools: Tool[] = [
+    { name: "Sign", href: "/pdf/sign", icon: Pen, ready: true },
     { name: "Watermark", href: "/pdf/watermark", icon: Stamp, ready: true },
     { name: "Page Numbers", href: "/pdf/page-numbers", icon: Hash, ready: true },
     { name: "Protect", href: "/pdf/protect", icon: Lock, ready: true },
