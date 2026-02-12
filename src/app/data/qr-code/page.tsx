@@ -4,9 +4,15 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Download, Copy, QrCode, Link as LinkIcon, Mail, Wifi, Phone, ImageIcon, Upload, X } from "lucide-react";
+import { ArrowLeft, Download, Copy, QrCode, Link as LinkIcon, Mail, Wifi, Phone, Upload, X, Check } from "lucide-react";
+import QRCodeLib from "qrcode";
 
+/* ==================== TYPES ==================== */
 type QRType = "url" | "text" | "email" | "phone" | "wifi";
+type BodyShape = "square" | "dots" | "rounded" | "diamond" | "star" | "heart";
+type EyeFrameShape = "square" | "rounded" | "circle" | "dots";
+type EyeBallShape = "square" | "rounded" | "circle" | "diamond";
+type ECLevel = "L" | "M" | "Q" | "H";
 
 const presets: { type: QRType; label: string; icon: React.ComponentType<{ className?: string }>; placeholder: string }[] = [
     { type: "url", label: "URL", icon: LinkIcon, placeholder: "https://example.com" },
@@ -16,20 +22,153 @@ const presets: { type: QRType; label: string; icon: React.ComponentType<{ classN
     { type: "wifi", label: "WiFi", icon: Wifi, placeholder: "Network name" },
 ];
 
+/* ==================== SHAPE RENDERERS ==================== */
+function drawBody(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, shape: BodyShape, color: string) {
+    ctx.fillStyle = color;
+    const half = s / 2;
+    const cx = x + half, cy = y + half;
+    const r = half * 0.85;
+    switch (shape) {
+        case "square":
+            ctx.fillRect(x, y, s, s);
+            break;
+        case "dots":
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+        case "rounded":
+            ctx.beginPath();
+            ctx.roundRect(x + s * 0.05, y + s * 0.05, s * 0.9, s * 0.9, s * 0.3);
+            ctx.fill();
+            break;
+        case "diamond":
+            ctx.beginPath();
+            ctx.moveTo(cx, y + s * 0.08);
+            ctx.lineTo(x + s * 0.92, cy);
+            ctx.lineTo(cx, y + s * 0.92);
+            ctx.lineTo(x + s * 0.08, cy);
+            ctx.closePath();
+            ctx.fill();
+            break;
+        case "star": {
+            ctx.beginPath();
+            for (let i = 0; i < 5; i++) {
+                const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                const px = cx + r * Math.cos(angle);
+                const py = cy + r * Math.sin(angle);
+                i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            break;
+        }
+        case "heart": {
+            const size = s * 0.45;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy + size * 0.7);
+            ctx.bezierCurveTo(cx - size * 1.2, cy - size * 0.3, cx - size * 0.5, cy - size * 1.1, cx, cy - size * 0.4);
+            ctx.bezierCurveTo(cx + size * 0.5, cy - size * 1.1, cx + size * 1.2, cy - size * 0.3, cx, cy + size * 0.7);
+            ctx.fill();
+            break;
+        }
+    }
+}
+
+function drawEyeFrame(ctx: CanvasRenderingContext2D, x: number, y: number, cellSize: number, shape: EyeFrameShape, color: string) {
+    const s = cellSize * 7;
+    const inner = cellSize;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = cellSize;
+    const offset = cellSize / 2;
+
+    switch (shape) {
+        case "square":
+            ctx.strokeRect(x + offset, y + offset, s - cellSize, s - cellSize);
+            break;
+        case "rounded":
+            ctx.beginPath();
+            ctx.roundRect(x + offset, y + offset, s - cellSize, s - cellSize, cellSize * 1.5);
+            ctx.stroke();
+            break;
+        case "circle":
+            ctx.beginPath();
+            ctx.arc(x + s / 2, y + s / 2, s / 2 - offset, 0, Math.PI * 2);
+            ctx.stroke();
+            break;
+        case "dots":
+            // Draw individual dot frame
+            for (let r = 0; r < 7; r++) {
+                for (let c = 0; c < 7; c++) {
+                    if (r === 0 || r === 6 || c === 0 || c === 6) {
+                        ctx.fillStyle = color;
+                        ctx.beginPath();
+                        ctx.arc(x + c * cellSize + cellSize / 2, y + r * cellSize + cellSize / 2, cellSize * 0.4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+            break;
+    }
+}
+
+function drawEyeBall(ctx: CanvasRenderingContext2D, x: number, y: number, cellSize: number, shape: EyeBallShape, color: string) {
+    const s = cellSize * 3;
+    const cx = x + s / 2, cy = y + s / 2;
+    ctx.fillStyle = color;
+
+    switch (shape) {
+        case "square":
+            ctx.fillRect(x, y, s, s);
+            break;
+        case "rounded":
+            ctx.beginPath();
+            ctx.roundRect(x, y, s, s, cellSize);
+            ctx.fill();
+            break;
+        case "circle":
+            ctx.beginPath();
+            ctx.arc(cx, cy, s / 2, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+        case "diamond":
+            ctx.beginPath();
+            ctx.moveTo(cx, y);
+            ctx.lineTo(x + s, cy);
+            ctx.lineTo(cx, y + s);
+            ctx.lineTo(x, cy);
+            ctx.closePath();
+            ctx.fill();
+            break;
+    }
+}
+
+/* ==================== COMPONENT ==================== */
 export default function QRCodePage() {
     const [type, setType] = useState<QRType>("url");
     const [input, setInput] = useState("");
     const [wifiPassword, setWifiPassword] = useState("");
     const [wifiSecurity, setWifiSecurity] = useState<"WPA" | "WEP" | "nopass">("WPA");
-    const [size, setSize] = useState(256);
+    // Appearance
+    const [resolution, setResolution] = useState(1024);
     const [fgColor, setFgColor] = useState("#000000");
     const [bgColor, setBgColor] = useState("#ffffff");
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [generated, setGenerated] = useState(false);
+    const [transparent, setTransparent] = useState(false);
+    const [ecLevel, setEcLevel] = useState<ECLevel>("H");
+    // Shapes
+    const [bodyShape, setBodyShape] = useState<BodyShape>("square");
+    const [eyeFrameShape, setEyeFrameShape] = useState<EyeFrameShape>("square");
+    const [eyeBallShape, setEyeBallShape] = useState<EyeBallShape>("square");
+    // Logo
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
-    const [logoSize, setLogoSize] = useState(22); // percentage of QR size
+    const [logoSize, setLogoSize] = useState(22);
     const [logoShape, setLogoShape] = useState<"square" | "circle">("square");
+    // State
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [generated, setGenerated] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [activeSection, setActiveSection] = useState<string | null>("content");
 
     const buildPayload = useCallback(() => {
         switch (type) {
@@ -45,65 +184,104 @@ export default function QRCodePage() {
     const generateQR = useCallback(async () => {
         const payload = buildPayload();
         if (!payload.trim()) return;
-
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        // Use a simple QR code generation via Canvas API
-        // We'll use a lightweight approach with the QRCode library pattern
         try {
-            // Dynamic import of a lightweight QR encoder
-            const qrData = encodeQR(payload);
-            const ctx = canvas.getContext("2d")!;
-            canvas.width = size;
-            canvas.height = size;
-
+            // Generate QR matrix using qrcode lib
+            const qrData = QRCodeLib.create(payload, { errorCorrectionLevel: ecLevel });
             const modules = qrData.modules;
-            const moduleCount = modules.length;
-            const cellSize = size / moduleCount;
+            const moduleCount = modules.size;
+            const margin = 4;
+            const totalModules = moduleCount + margin * 2;
+            const cellSize = resolution / totalModules;
+
+            canvas.width = resolution;
+            canvas.height = resolution;
+            const ctx = canvas.getContext("2d")!;
 
             // Background
-            ctx.fillStyle = bgColor;
-            ctx.fillRect(0, 0, size, size);
+            if (transparent) {
+                ctx.clearRect(0, 0, resolution, resolution);
+            } else {
+                ctx.fillStyle = bgColor;
+                ctx.fillRect(0, 0, resolution, resolution);
+            }
 
-            // QR modules
-            ctx.fillStyle = fgColor;
+            // Identify finder pattern positions (3 eyes)
+            const eyePositions = [
+                { row: 0, col: 0 },                          // top-left
+                { row: 0, col: moduleCount - 7 },             // top-right
+                { row: moduleCount - 7, col: 0 },             // bottom-left
+            ];
+
+            const isInEye = (r: number, c: number) => {
+                for (const ep of eyePositions) {
+                    if (r >= ep.row && r < ep.row + 7 && c >= ep.col && c < ep.col + 7) return true;
+                }
+                return false;
+            };
+
+            // Draw data modules (skip eye areas)
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
-                    if (modules[row][col]) {
-                        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+                    if (isInEye(row, col)) continue;
+                    if (modules.get(row, col)) {
+                        const x = (col + margin) * cellSize;
+                        const y = (row + margin) * cellSize;
+                        drawBody(ctx, x, y, cellSize, bodyShape, fgColor);
                     }
                 }
             }
 
-            // Draw logo overlay if present
+            // Draw eyes (frame + ball)
+            for (const ep of eyePositions) {
+                const ex = (ep.col + margin) * cellSize;
+                const ey = (ep.row + margin) * cellSize;
+
+                // Clear eye area background
+                if (!transparent) {
+                    ctx.fillStyle = bgColor;
+                    ctx.fillRect(ex, ey, cellSize * 7, cellSize * 7);
+                } else {
+                    ctx.clearRect(ex, ey, cellSize * 7, cellSize * 7);
+                }
+
+                // Draw frame
+                drawEyeFrame(ctx, ex, ey, cellSize, eyeFrameShape, fgColor);
+
+                // Draw ball (inner 3x3 at offset 2,2)
+                const bx = ex + cellSize * 2;
+                const by = ey + cellSize * 2;
+                drawEyeBall(ctx, bx, by, cellSize, eyeBallShape, fgColor);
+            }
+
+            // Draw logo
             if (logoDataUrl) {
                 const img = new window.Image();
                 img.onload = () => {
-                    const logoDim = (size * logoSize) / 100;
+                    const logoDim = (resolution * logoSize) / 100;
                     const padding = logoDim * 0.12;
-                    const cx = (size - logoDim) / 2;
-                    const cy = (size - logoDim) / 2;
+                    const cx = (resolution - logoDim) / 2;
+                    const cy = (resolution - logoDim) / 2;
 
-                    // Draw white background behind logo
-                    ctx.fillStyle = bgColor;
                     if (logoShape === "circle") {
+                        ctx.fillStyle = transparent ? "rgba(255,255,255,0.95)" : bgColor;
                         ctx.beginPath();
-                        ctx.arc(size / 2, size / 2, (logoDim + padding * 2) / 2, 0, Math.PI * 2);
+                        ctx.arc(resolution / 2, resolution / 2, (logoDim + padding * 2) / 2, 0, Math.PI * 2);
                         ctx.fill();
-                        // Clip to circle for logo
                         ctx.save();
                         ctx.beginPath();
-                        ctx.arc(size / 2, size / 2, logoDim / 2, 0, Math.PI * 2);
+                        ctx.arc(resolution / 2, resolution / 2, logoDim / 2, 0, Math.PI * 2);
                         ctx.clip();
                         ctx.drawImage(img, cx, cy, logoDim, logoDim);
                         ctx.restore();
                     } else {
-                        const r = logoDim * 0.08; // corner radius
+                        const r = logoDim * 0.08;
+                        ctx.fillStyle = transparent ? "rgba(255,255,255,0.95)" : bgColor;
                         ctx.beginPath();
                         ctx.roundRect(cx - padding, cy - padding, logoDim + padding * 2, logoDim + padding * 2, r + padding * 0.5);
                         ctx.fill();
-                        // Draw logo with rounded corners
                         ctx.save();
                         ctx.beginPath();
                         ctx.roundRect(cx, cy, logoDim, logoDim, r);
@@ -119,17 +297,16 @@ export default function QRCodePage() {
         } catch (err) {
             console.error("QR generation failed:", err);
         }
-    }, [buildPayload, size, fgColor, bgColor, logoDataUrl, logoSize, logoShape]);
+    }, [buildPayload, resolution, fgColor, bgColor, transparent, ecLevel, bodyShape, eyeFrameShape, eyeBallShape, logoDataUrl, logoSize, logoShape]);
 
     useEffect(() => {
         if (input.trim()) {
-            const timer = setTimeout(generateQR, 300);
+            const timer = setTimeout(generateQR, 200);
             return () => clearTimeout(timer);
-        } else {
-            setGenerated(false);
-        }
-    }, [input, type, wifiPassword, wifiSecurity, size, fgColor, bgColor, logoDataUrl, logoSize, logoShape, generateQR]);
+        } else { setGenerated(false); }
+    }, [input, type, wifiPassword, wifiSecurity, resolution, fgColor, bgColor, transparent, ecLevel, bodyShape, eyeFrameShape, eyeBallShape, logoDataUrl, logoSize, logoShape, generateQR]);
 
+    // Logo upload
     const handleLogoUpload = (f: File) => {
         if (!f.type.startsWith("image/")) return;
         setLogoFile(f);
@@ -138,40 +315,110 @@ export default function QRCodePage() {
         reader.readAsDataURL(f);
     };
 
-    const removeLogo = () => {
-        setLogoFile(null);
-        setLogoDataUrl(null);
-    };
-
-    const downloadQR = (format: "png" | "jpeg" | "svg") => {
+    // Downloads
+    const downloadQR = (format: "png" | "jpeg" | "webp") => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-
-        const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+        const mimeType = `image/${format}`;
         canvas.toBlob((blob) => {
             if (!blob) return;
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `qrcode.${format}`;
+            a.download = `qrcode_${resolution}px.${format}`;
             a.click();
             setTimeout(() => URL.revokeObjectURL(url), 3000);
-        }, mimeType, 0.95);
+        }, mimeType, 1.0);
+    };
+
+    const downloadSVG = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        // Convert canvas to SVG by embedding as image
+        const dataUrl = canvas.toDataURL("image/png");
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${resolution}" height="${resolution}"><image href="${dataUrl}" width="${resolution}" height="${resolution}"/></svg>`;
+        const blob = new Blob([svg], { type: "image/svg+xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "qrcode.svg";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
     };
 
     const copyQR = async () => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         try {
-            const blob = await new Promise<Blob>((resolve) =>
-                canvas.toBlob((b) => resolve(b!), "image/png")
-            );
+            const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), "image/png"));
             await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-        } catch { /* clipboard might not be supported */ }
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch { /* */ }
     };
 
+    /* === SHAPE SELECTOR COMPONENT === */
+    const ShapeGrid = <T extends string>({ options, value, onChange, renderPreview }: {
+        options: T[]; value: T; onChange: (v: T) => void;
+        renderPreview: (shape: T, active: boolean) => React.ReactNode;
+    }) => (
+        <div className="flex flex-wrap gap-1.5">
+            {options.map((opt) => (
+                <button key={opt} onClick={() => onChange(opt)}
+                    className={`w-10 h-10 rounded-lg border-2 flex items-center justify-center transition-all ${value === opt ? "border-primary bg-primary/10 scale-105" : "border-muted hover:border-muted-foreground/30"}`}>
+                    {renderPreview(opt, value === opt)}
+                </button>
+            ))}
+        </div>
+    );
+
+    /* === Mini shape preview renderers === */
+    const BodyPreview = ({ shape }: { shape: BodyShape }) => {
+        const s = 5;
+        switch (shape) {
+            case "square": return <div className="w-5 h-5 grid grid-cols-3 gap-[1px]">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className={`${[0, 1, 2, 4, 6, 7, 8].includes(i) ? "bg-foreground" : ""} rounded-[0.5px]`} />)}</div>;
+            case "dots": return <div className="w-5 h-5 grid grid-cols-3 gap-[1px]">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className={`${[0, 1, 2, 4, 6, 7, 8].includes(i) ? "bg-foreground rounded-full" : ""}`} />)}</div>;
+            case "rounded": return <div className="w-5 h-5 grid grid-cols-3 gap-[1px]">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className={`${[0, 1, 2, 4, 6, 7, 8].includes(i) ? "bg-foreground rounded-[2px]" : ""}`} />)}</div>;
+            case "diamond": return <div className="w-4 h-4 bg-foreground rotate-45" />;
+            case "star": return <span className="text-[10px]">★</span>;
+            case "heart": return <span className="text-[10px]">♥</span>;
+        }
+    };
+
+    const EyeFramePreview = ({ shape }: { shape: EyeFrameShape }) => {
+        switch (shape) {
+            case "square": return <div className="w-5 h-5 border-2 border-foreground" />;
+            case "rounded": return <div className="w-5 h-5 border-2 border-foreground rounded-md" />;
+            case "circle": return <div className="w-5 h-5 border-2 border-foreground rounded-full" />;
+            case "dots": return <div className="w-5 h-5 border-2 border-dotted border-foreground rounded-sm" />;
+        }
+    };
+
+    const EyeBallPreview = ({ shape }: { shape: EyeBallShape }) => {
+        switch (shape) {
+            case "square": return <div className="w-3 h-3 bg-foreground" />;
+            case "rounded": return <div className="w-3 h-3 bg-foreground rounded-sm" />;
+            case "circle": return <div className="w-3 h-3 bg-foreground rounded-full" />;
+            case "diamond": return <div className="w-2.5 h-2.5 bg-foreground rotate-45" />;
+        }
+    };
+
+    const Section = ({ id, title, icon, children }: { id: string; title: string; icon: string; children: React.ReactNode }) => (
+        <div className="border rounded-xl overflow-hidden mb-3">
+            <button onClick={() => setActiveSection(activeSection === id ? null : id)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                <div className="flex items-center gap-3">
+                    <span className="text-base">{icon}</span>
+                    <span className="text-sm font-medium">{title}</span>
+                </div>
+                <span className={`text-muted-foreground text-xs transition-transform ${activeSection === id ? "rotate-180" : ""}`}>▼</span>
+            </button>
+            {activeSection === id && <div className="px-4 pb-4 border-t pt-4">{children}</div>}
+        </div>
+    );
+
     return (
-        <div className="max-w-2xl mx-auto px-4 py-6">
+        <div className="max-w-4xl mx-auto px-4 py-6">
             <div className="flex items-center gap-3 mb-6">
                 <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                     <Link href="/data"><ArrowLeft className="h-4 w-4" /></Link>
@@ -179,441 +426,180 @@ export default function QRCodePage() {
                 <h1 className="text-lg font-semibold">QR Code Generator</h1>
             </div>
 
-            {/* Type selector */}
-            <div className="flex gap-1 p-1 bg-muted rounded-lg mb-4 flex-wrap">
-                {presets.map((p) => (
-                    <button
-                        key={p.type}
-                        onClick={() => { setType(p.type); setInput(""); }}
-                        className={`flex-1 py-2 px-2 text-xs rounded-md transition-colors flex items-center justify-center gap-1.5 min-w-[60px] ${type === p.type ? "bg-background shadow-sm font-medium" : "text-muted-foreground"}`}
-                    >
-                        <p.icon className="h-3 w-3" />{p.label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Input */}
-            <div className="border rounded-xl p-4 mb-4">
-                <label className="text-sm font-medium mb-2 block">
-                    {presets.find((p) => p.type === type)?.label} Input
-                </label>
-                <Input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder={presets.find((p) => p.type === type)?.placeholder}
-                    className="mb-2"
-                />
-
-                {type === "wifi" && (
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                        <div>
-                            <label className="text-xs text-muted-foreground">Password</label>
-                            <Input
-                                value={wifiPassword}
-                                onChange={(e) => setWifiPassword(e.target.value)}
-                                placeholder="WiFi password"
-                            />
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+                {/* LEFT: Controls */}
+                <div>
+                    {/* Content */}
+                    <Section id="content" title="Enter Content" icon="⚡">
+                        <div className="flex gap-1 p-1 bg-muted rounded-lg mb-3 flex-wrap">
+                            {presets.map((p) => (
+                                <button key={p.type} onClick={() => { setType(p.type); setInput(""); }}
+                                    className={`flex-1 py-1.5 px-2 text-xs rounded-md transition-colors flex items-center justify-center gap-1 min-w-[50px] ${type === p.type ? "bg-background shadow-sm font-medium" : "text-muted-foreground"}`}>
+                                    <p.icon className="h-3 w-3" />{p.label}
+                                </button>
+                            ))}
                         </div>
-                        <div>
-                            <label className="text-xs text-muted-foreground">Security</label>
-                            <select
-                                value={wifiSecurity}
-                                onChange={(e) => setWifiSecurity(e.target.value as typeof wifiSecurity)}
-                                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                            >
-                                <option value="WPA">WPA/WPA2</option>
-                                <option value="WEP">WEP</option>
-                                <option value="nopass">None</option>
-                            </select>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Customization */}
-            <div className="border rounded-xl p-4 mb-4">
-                <h3 className="text-sm font-medium mb-3">Customize</h3>
-                <div className="grid grid-cols-3 gap-3">
-                    <div>
-                        <label className="text-xs text-muted-foreground">Size (px)</label>
-                        <Input type="number" min={128} max={1024} step={64} value={size} onChange={(e) => setSize(parseInt(e.target.value) || 256)} />
-                    </div>
-                    <div>
-                        <label className="text-xs text-muted-foreground">Color</label>
-                        <div className="flex items-center gap-2">
-                            <input type="color" value={fgColor} onChange={(e) => setFgColor(e.target.value)} className="h-9 w-10 rounded cursor-pointer" />
-                            <span className="text-xs text-muted-foreground">{fgColor}</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="text-xs text-muted-foreground">Background</label>
-                        <div className="flex items-center gap-2">
-                            <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="h-9 w-10 rounded cursor-pointer" />
-                            <span className="text-xs text-muted-foreground">{bgColor}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Logo */}
-            <div className="border rounded-xl p-4 mb-4">
-                <h3 className="text-sm font-medium mb-3">Center Logo</h3>
-                {!logoFile ? (
-                    <div
-                        className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/40 transition-colors"
-                        onClick={() => document.getElementById("logo-input")?.click()}
-                    >
-                        <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => e.target.files?.[0] && handleLogoUpload(e.target.files[0])}
-                            className="hidden"
-                            id="logo-input"
-                        />
-                        <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground">Upload logo or image (optional)</p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                            {logoDataUrl && (
-                                <img src={logoDataUrl} alt="Logo" className="h-10 w-10 object-cover rounded border" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{logoFile.name}</p>
-                                <p className="text-xs text-muted-foreground">{Math.round(logoFile.size / 1024)} KB</p>
+                        <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder={presets.find((p) => p.type === type)?.placeholder} />
+                        {type === "wifi" && (
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                                <div>
+                                    <label className="text-xs text-muted-foreground">Password</label>
+                                    <Input value={wifiPassword} onChange={(e) => setWifiPassword(e.target.value)} placeholder="WiFi password" />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-muted-foreground">Security</label>
+                                    <select value={wifiSecurity} onChange={(e) => setWifiSecurity(e.target.value as typeof wifiSecurity)}
+                                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                                        <option value="WPA">WPA/WPA2</option><option value="WEP">WEP</option><option value="nopass">None</option>
+                                    </select>
+                                </div>
                             </div>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={removeLogo}>
-                                <X className="h-3.5 w-3.5" />
-                            </Button>
-                        </div>
+                        )}
+                    </Section>
 
-                        <div className="grid grid-cols-2 gap-3">
+                    {/* Colors */}
+                    <Section id="colors" title="Set Colors" icon="🎨">
+                        <div className="grid grid-cols-2 gap-3 mb-3">
                             <div>
-                                <label className="text-xs text-muted-foreground">Logo size ({logoSize}%)</label>
-                                <input
-                                    type="range"
-                                    min={10}
-                                    max={35}
-                                    value={logoSize}
-                                    onChange={(e) => setLogoSize(parseInt(e.target.value))}
-                                    className="w-full accent-primary"
-                                />
+                                <label className="text-xs text-muted-foreground mb-1 block">Foreground</label>
+                                <div className="flex items-center gap-2">
+                                    <input type="color" value={fgColor} onChange={(e) => setFgColor(e.target.value)} className="h-9 w-12 rounded cursor-pointer border" />
+                                    <Input value={fgColor} onChange={(e) => setFgColor(e.target.value)} className="font-mono text-xs" />
+                                </div>
                             </div>
                             <div>
-                                <label className="text-xs text-muted-foreground">Shape</label>
-                                <div className="flex gap-1 mt-1">
-                                    <button
-                                        onClick={() => setLogoShape("square")}
-                                        className={`flex-1 py-1.5 text-xs rounded-md border transition-colors ${logoShape === "square" ? "bg-foreground text-background" : ""}`}
-                                    >
-                                        Square
-                                    </button>
-                                    <button
-                                        onClick={() => setLogoShape("circle")}
-                                        className={`flex-1 py-1.5 text-xs rounded-md border transition-colors ${logoShape === "circle" ? "bg-foreground text-background" : ""}`}
-                                    >
-                                        Circle
-                                    </button>
+                                <label className="text-xs text-muted-foreground mb-1 block">Background</label>
+                                <div className="flex items-center gap-2">
+                                    <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="h-9 w-12 rounded cursor-pointer border" disabled={transparent} />
+                                    <Input value={transparent ? "transparent" : bgColor} onChange={(e) => setBgColor(e.target.value)} className="font-mono text-xs" disabled={transparent} />
                                 </div>
                             </div>
                         </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} className="rounded" />
+                            <span className="text-sm">Transparent background</span>
+                        </label>
+                    </Section>
 
-                        <p className="text-xs text-muted-foreground">Tip: Keep logo under 25% for best scan reliability</p>
-                    </div>
-                )}
-            </div>
+                    {/* Logo */}
+                    <Section id="logo" title="Add Logo Image" icon="🖼️">
+                        {!logoFile ? (
+                            <div className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/40 transition-colors"
+                                onClick={() => document.getElementById("logo-input")?.click()}>
+                                <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && handleLogoUpload(e.target.files[0])} className="hidden" id="logo-input" />
+                                <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground" /><p className="text-xs text-muted-foreground">Upload logo (optional)</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-3">
+                                    {logoDataUrl && <img src={logoDataUrl} alt="Logo" className="h-10 w-10 object-cover rounded border" />}
+                                    <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{logoFile.name}</p></div>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setLogoFile(null); setLogoDataUrl(null); }}><X className="h-3.5 w-3.5" /></Button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs text-muted-foreground">Size ({logoSize}%)</label>
+                                        <input type="range" min={10} max={35} value={logoSize} onChange={(e) => setLogoSize(parseInt(e.target.value))} className="w-full accent-primary" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-muted-foreground">Shape</label>
+                                        <div className="flex gap-1 mt-1">
+                                            <button onClick={() => setLogoShape("square")} className={`flex-1 py-1 text-xs rounded-md border ${logoShape === "square" ? "bg-foreground text-background" : ""}`}>Square</button>
+                                            <button onClick={() => setLogoShape("circle")} className={`flex-1 py-1 text-xs rounded-md border ${logoShape === "circle" ? "bg-foreground text-background" : ""}`}>Circle</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </Section>
 
-            {/* Preview */}
-            <div className="border rounded-xl p-6 mb-4 flex flex-col items-center">
-                <canvas
-                    ref={canvasRef}
-                    className="border rounded-lg bg-white"
-                    style={{ width: Math.min(size, 280), height: Math.min(size, 280), imageRendering: "pixelated" }}
-                />
-                {!generated && (
-                    <p className="text-sm text-muted-foreground mt-3">Enter content above to generate QR code</p>
-                )}
-            </div>
+                    {/* Design */}
+                    <Section id="design" title="Customize Design" icon="🎯">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-2 block font-medium">Body Shape</label>
+                                <ShapeGrid<BodyShape>
+                                    options={["square", "dots", "rounded", "diamond", "star", "heart"]}
+                                    value={bodyShape} onChange={setBodyShape}
+                                    renderPreview={(s) => <BodyPreview shape={s} />}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-2 block font-medium">Eye Frame Shape</label>
+                                <ShapeGrid<EyeFrameShape>
+                                    options={["square", "rounded", "circle", "dots"]}
+                                    value={eyeFrameShape} onChange={setEyeFrameShape}
+                                    renderPreview={(s) => <EyeFramePreview shape={s} />}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-2 block font-medium">Eye Ball Shape</label>
+                                <ShapeGrid<EyeBallShape>
+                                    options={["square", "rounded", "circle", "diamond"]}
+                                    value={eyeBallShape} onChange={setEyeBallShape}
+                                    renderPreview={(s) => <EyeBallPreview shape={s} />}
+                                />
+                            </div>
+                        </div>
+                    </Section>
 
-            {/* Download options */}
-            {generated && (
-                <div className="flex gap-2">
-                    <Button onClick={() => downloadQR("png")} className="flex-1">
-                        <Download className="h-4 w-4 mr-2" />PNG
-                    </Button>
-                    <Button onClick={() => downloadQR("jpeg")} variant="outline" className="flex-1">
-                        <Download className="h-4 w-4 mr-2" />JPEG
-                    </Button>
-                    <Button onClick={copyQR} variant="outline" className="flex-none">
-                        <Copy className="h-4 w-4" />
-                    </Button>
+                    {/* Quality */}
+                    <Section id="quality" title="Quality & Size" icon="📐">
+                        <div className="space-y-3">
+                            <div>
+                                <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                    <span>Low Quality</span>
+                                    <span className="font-mono font-medium text-foreground">{resolution} × {resolution} px</span>
+                                    <span>High Quality</span>
+                                </div>
+                                <input type="range" min={256} max={2048} step={128} value={resolution} onChange={(e) => setResolution(parseInt(e.target.value))} className="w-full accent-primary" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Error Correction</label>
+                                <div className="flex gap-1">
+                                    {(["L", "M", "Q", "H"] as ECLevel[]).map((level) => (
+                                        <button key={level} onClick={() => setEcLevel(level)}
+                                            className={`flex-1 py-1.5 text-xs rounded-md border transition-colors ${ecLevel === level ? "bg-foreground text-background" : "text-muted-foreground"}`}>
+                                            {level} {level === "L" ? "(7%)" : level === "M" ? "(15%)" : level === "Q" ? "(25%)" : "(30%)"}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">Higher = more scannable with logos, larger QR</p>
+                            </div>
+                        </div>
+                    </Section>
                 </div>
-            )}
 
-            <p className="text-xs text-muted-foreground text-center mt-6">Generated locally in your browser</p>
+                {/* RIGHT: Preview + Download */}
+                <div className="lg:sticky lg:top-6 lg:self-start">
+                    <div className={`border rounded-xl p-6 mb-4 flex flex-col items-center ${transparent ? "bg-[repeating-conic-gradient(#e5e7eb_0%_25%,transparent_0%_50%)] bg-[length:16px_16px]" : ""}`}>
+                        <canvas ref={canvasRef} className="rounded-lg max-w-full" style={{ width: 280, height: 280, imageRendering: resolution > 512 ? "auto" : "pixelated" }} />
+                        {!generated && <p className="text-sm text-muted-foreground mt-3">Enter content to generate</p>}
+                    </div>
+
+                    {generated && (
+                        <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button onClick={() => downloadQR("png")} className="h-10">
+                                    <Download className="h-4 w-4 mr-1.5" />PNG
+                                </Button>
+                                <Button onClick={() => downloadQR("webp")} variant="outline" className="h-10">
+                                    <Download className="h-4 w-4 mr-1.5" />WebP
+                                </Button>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                <Button onClick={() => downloadQR("jpeg")} variant="outline" size="sm">JPEG</Button>
+                                <Button onClick={downloadSVG} variant="outline" size="sm">SVG</Button>
+                                <Button onClick={copyQR} variant="outline" size="sm">
+                                    {copied ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}Copy
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    <p className="text-xs text-muted-foreground text-center mt-4">100% local • No data sent</p>
+                </div>
+            </div>
         </div>
     );
-}
-
-// ---- Minimal QR Code Encoder (no external dependencies) ----
-// Based on QR Code Model 2 spec, supports alphanumeric and byte modes
-// This is a simplified encoder suitable for typical URLs and text
-
-interface QRData {
-    modules: boolean[][];
-}
-
-function encodeQR(text: string): QRData {
-    // Determine version needed (simplified: version 1-10 for up to ~271 chars)
-    const data = new TextEncoder().encode(text);
-    const len = data.length;
-
-    // Pick version based on capacity (byte mode, error correction L)
-    const capacities = [0, 17, 32, 53, 78, 106, 134, 154, 192, 230, 271, 321, 367, 425, 458, 520, 586, 644, 718, 792, 858];
-    let version = 1;
-    for (let v = 1; v < capacities.length; v++) {
-        if (len <= capacities[v]) { version = v; break; }
-        if (v === capacities.length - 1) version = v;
-    }
-
-    const size = 17 + version * 4;
-    const modules: (boolean | null)[][] = Array.from({ length: size }, () => Array(size).fill(null));
-    const reserved: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
-
-    // Place finder patterns
-    placeFinder(modules, reserved, 0, 0);
-    placeFinder(modules, reserved, size - 7, 0);
-    placeFinder(modules, reserved, 0, size - 7);
-
-    // Place timing patterns
-    for (let i = 8; i < size - 8; i++) {
-        if (!reserved[6][i]) {
-            modules[6][i] = i % 2 === 0;
-            reserved[6][i] = true;
-        }
-        if (!reserved[i][6]) {
-            modules[i][6] = i % 2 === 0;
-            reserved[i][6] = true;
-        }
-    }
-
-    // Place alignment patterns for version >= 2
-    if (version >= 2) {
-        const positions = getAlignmentPositions(version, size);
-        for (const r of positions) {
-            for (const c of positions) {
-                if (reserved[r] && reserved[r][c]) continue;
-                placeAlignment(modules, reserved, r, c);
-            }
-        }
-    }
-
-    // Reserve format info areas
-    for (let i = 0; i < 8; i++) {
-        reserved[8] = reserved[8] || Array(size).fill(false);
-        reserved[8][i] = true;
-        reserved[8][size - 1 - i] = true;
-        if (i < size) {
-            reserved[i] = reserved[i] || Array(size).fill(false);
-            reserved[i][8] = true;
-        }
-        if (size - 1 - i >= 0 && size - 1 - i < size) {
-            reserved[size - 1 - i] = reserved[size - 1 - i] || Array(size).fill(false);
-            reserved[size - 1 - i][8] = true;
-        }
-    }
-    // Dark module
-    modules[size - 8][8] = true;
-    reserved[size - 8][8] = true;
-
-    // Encode data
-    const bits = encodeData(data, version, len);
-
-    // Place data bits
-    placeData(modules, reserved, bits, size);
-
-    // Apply mask (pattern 0 for simplicity)
-    applyMask(modules, reserved, size, 0);
-
-    // Place format info
-    placeFormatInfo(modules, size, 0);
-
-    // Convert null modules to false
-    const result: boolean[][] = modules.map(row => row.map(m => m === true));
-
-    return { modules: result };
-}
-
-function placeFinder(modules: (boolean | null)[][], reserved: boolean[][], row: number, col: number) {
-    for (let r = -1; r <= 7; r++) {
-        for (let c = -1; c <= 7; c++) {
-            const rr = row + r, cc = col + c;
-            if (rr < 0 || cc < 0 || rr >= modules.length || cc >= modules.length) continue;
-            const isBorder = r === -1 || r === 7 || c === -1 || c === 7;
-            const isOuter = r === 0 || r === 6 || c === 0 || c === 6;
-            const isInner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
-            modules[rr][cc] = !isBorder && (isOuter || isInner);
-            reserved[rr][cc] = true;
-        }
-    }
-}
-
-function placeAlignment(modules: (boolean | null)[][], reserved: boolean[][], row: number, col: number) {
-    for (let r = -2; r <= 2; r++) {
-        for (let c = -2; c <= 2; c++) {
-            const rr = row + r, cc = col + c;
-            if (rr < 0 || cc < 0 || rr >= modules.length || cc >= modules.length) continue;
-            if (reserved[rr][cc]) continue;
-            const isEdge = Math.abs(r) === 2 || Math.abs(c) === 2;
-            const isCenter = r === 0 && c === 0;
-            modules[rr][cc] = isEdge || isCenter;
-            reserved[rr][cc] = true;
-        }
-    }
-}
-
-function getAlignmentPositions(version: number, size: number): number[] {
-    if (version === 1) return [];
-    const first = 6;
-    const last = size - 7;
-    const count = Math.floor(version / 7) + 2;
-    if (count === 2) return [first, last];
-    const step = Math.ceil((last - first) / (count - 1));
-    const positions = [first];
-    for (let i = 1; i < count - 1; i++) {
-        positions.push(last - (count - 1 - i) * step);
-    }
-    positions.push(last);
-    return positions;
-}
-
-function encodeData(data: Uint8Array, version: number, len: number): boolean[] {
-    const bits: boolean[] = [];
-
-    // Mode indicator: byte mode = 0100
-    bits.push(false, true, false, false);
-
-    // Character count (8 bits for v1-9, 16 bits for v10+)
-    const countBits = version <= 9 ? 8 : 16;
-    for (let i = countBits - 1; i >= 0; i--) {
-        bits.push(((len >> i) & 1) === 1);
-    }
-
-    // Data bytes
-    for (let i = 0; i < data.length; i++) {
-        for (let b = 7; b >= 0; b--) {
-            bits.push(((data[i] >> b) & 1) === 1);
-        }
-    }
-
-    // Terminator (up to 4 bits of 0)
-    for (let i = 0; i < 4 && bits.length < getCapacityBits(version); i++) {
-        bits.push(false);
-    }
-
-    // Pad to byte boundary
-    while (bits.length % 8 !== 0 && bits.length < getCapacityBits(version)) {
-        bits.push(false);
-    }
-
-    // Pad codewords
-    const padBytes = [0xEC, 0x11];
-    let padIdx = 0;
-    while (bits.length < getCapacityBits(version)) {
-        for (let b = 7; b >= 0 && bits.length < getCapacityBits(version); b--) {
-            bits.push(((padBytes[padIdx] >> b) & 1) === 1);
-        }
-        padIdx = (padIdx + 1) % 2;
-    }
-
-    return bits;
-}
-
-function getCapacityBits(version: number): number {
-    // Total data codewords * 8 (Error correction level L)
-    const dataCodewords = [0, 19, 34, 55, 80, 108, 136, 156, 194, 232, 274, 324, 370, 428, 461, 523, 589, 647, 721, 795, 861];
-    return (dataCodewords[version] || dataCodewords[1]) * 8;
-}
-
-function placeData(modules: (boolean | null)[][], reserved: boolean[][], bits: boolean[], size: number) {
-    let bitIdx = 0;
-    let upward = true;
-
-    for (let col = size - 1; col >= 1; col -= 2) {
-        if (col === 6) col = 5; // Skip timing column
-
-        for (let count = 0; count < size; count++) {
-            const row = upward ? size - 1 - count : count;
-
-            for (let c = 0; c < 2; c++) {
-                const cc = col - c;
-                if (cc < 0 || cc >= size) continue;
-                if (reserved[row] && reserved[row][cc]) continue;
-
-                modules[row][cc] = bitIdx < bits.length ? bits[bitIdx] : false;
-                bitIdx++;
-            }
-        }
-        upward = !upward;
-    }
-}
-
-function applyMask(modules: (boolean | null)[][], reserved: boolean[][], size: number, mask: number) {
-    for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-            if (reserved[r][c]) continue;
-            let shouldFlip = false;
-            switch (mask) {
-                case 0: shouldFlip = (r + c) % 2 === 0; break;
-                case 1: shouldFlip = r % 2 === 0; break;
-                case 2: shouldFlip = c % 3 === 0; break;
-                case 3: shouldFlip = (r + c) % 3 === 0; break;
-                case 4: shouldFlip = (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0; break;
-                case 5: shouldFlip = ((r * c) % 2 + (r * c) % 3) === 0; break;
-                case 6: shouldFlip = ((r * c) % 2 + (r * c) % 3) % 2 === 0; break;
-                case 7: shouldFlip = ((r + c) % 2 + (r * c) % 3) % 2 === 0; break;
-            }
-            if (shouldFlip) {
-                modules[r][c] = !modules[r][c];
-            }
-        }
-    }
-}
-
-function placeFormatInfo(modules: (boolean | null)[][], size: number, mask: number) {
-    // Format info for EC level L (01) and mask pattern
-    const formatBits = getFormatBits(0, mask); // 0 = EC level L
-
-    // Place around top-left finder
-    const positions1 = [
-        [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8],
-        [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8],
-    ];
-
-    for (let i = 0; i < 15; i++) {
-        const [r, c] = positions1[i];
-        modules[r][c] = ((formatBits >> (14 - i)) & 1) === 1;
-    }
-
-    // Place around other finders
-    const positions2 = [
-        [size - 1, 8], [size - 2, 8], [size - 3, 8], [size - 4, 8],
-        [size - 5, 8], [size - 6, 8], [size - 7, 8],
-        [8, size - 8], [8, size - 7], [8, size - 6], [8, size - 5],
-        [8, size - 4], [8, size - 3], [8, size - 2], [8, size - 1],
-    ];
-
-    for (let i = 0; i < 15; i++) {
-        const [r, c] = positions2[i];
-        modules[r][c] = ((formatBits >> (14 - i)) & 1) === 1;
-    }
-}
-
-function getFormatBits(ecLevel: number, mask: number): number {
-    // Pre-calculated format info strings for EC level L
-    const formatInfoL = [
-        0x77C4, 0x72F3, 0x7DAA, 0x789D, 0x662F, 0x6318, 0x6C41, 0x6976,
-    ];
-    return formatInfoL[mask] || formatInfoL[0];
 }
