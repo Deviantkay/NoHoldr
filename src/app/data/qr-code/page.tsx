@@ -222,10 +222,32 @@ export default function QRCodePage() {
                 return false;
             };
 
-            // Draw data modules (skip eye areas)
+            // Calculate logo exclusion zone in module coordinates
+            let logoExclusion: { minRow: number; maxRow: number; minCol: number; maxCol: number } | null = null;
+            if (logoDataUrl) {
+                const logoDimPx = (resolution * logoSize) / 100;
+                const paddingPx = logoDimPx * 0.15; // extra clearance so modules don't touch logo
+                const zonePx = logoDimPx + paddingPx * 2;
+                const zoneStartPx = (resolution - zonePx) / 2;
+                // Convert pixel coordinates back to module coordinates
+                const minCol = Math.floor(zoneStartPx / cellSize - margin);
+                const minRow = Math.floor(zoneStartPx / cellSize - margin);
+                const maxCol = Math.ceil((zoneStartPx + zonePx) / cellSize - margin);
+                const maxRow = Math.ceil((zoneStartPx + zonePx) / cellSize - margin);
+                logoExclusion = { minRow, maxRow, minCol, maxCol };
+            }
+
+            const isInLogoZone = (r: number, c: number) => {
+                if (!logoExclusion) return false;
+                return r >= logoExclusion.minRow && r < logoExclusion.maxRow &&
+                    c >= logoExclusion.minCol && c < logoExclusion.maxCol;
+            };
+
+            // Draw data modules (skip eye areas AND logo zone)
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
                     if (isInEye(row, col)) continue;
+                    if (isInLogoZone(row, col)) continue;
                     if (modules.get(row, col)) {
                         const x = (col + margin) * cellSize;
                         const y = (row + margin) * cellSize;
@@ -256,20 +278,15 @@ export default function QRCodePage() {
                 drawEyeBall(ctx, bx, by, cellSize, eyeBallShape, fgColor);
             }
 
-            // Draw logo
+            // Draw logo directly (no background — modules already excluded from this area)
             if (logoDataUrl) {
                 const img = new window.Image();
                 img.onload = () => {
                     const logoDim = (resolution * logoSize) / 100;
-                    const padding = logoDim * 0.12;
                     const cx = (resolution - logoDim) / 2;
                     const cy = (resolution - logoDim) / 2;
 
                     if (logoShape === "circle") {
-                        ctx.fillStyle = transparent ? "rgba(255,255,255,0.95)" : bgColor;
-                        ctx.beginPath();
-                        ctx.arc(resolution / 2, resolution / 2, (logoDim + padding * 2) / 2, 0, Math.PI * 2);
-                        ctx.fill();
                         ctx.save();
                         ctx.beginPath();
                         ctx.arc(resolution / 2, resolution / 2, logoDim / 2, 0, Math.PI * 2);
@@ -278,10 +295,6 @@ export default function QRCodePage() {
                         ctx.restore();
                     } else {
                         const r = logoDim * 0.08;
-                        ctx.fillStyle = transparent ? "rgba(255,255,255,0.95)" : bgColor;
-                        ctx.beginPath();
-                        ctx.roundRect(cx - padding, cy - padding, logoDim + padding * 2, logoDim + padding * 2, r + padding * 0.5);
-                        ctx.fill();
                         ctx.save();
                         ctx.beginPath();
                         ctx.roundRect(cx, cy, logoDim, logoDim, r);
