@@ -278,11 +278,19 @@ export default function QRCodePage() {
                 drawEyeBall(ctx, bx, by, cellSize, eyeBallShape, fgColor);
             }
 
-            // Draw logo directly (no background — modules already excluded from this area)
+            // Draw logo — first clear the zone to transparent, then draw the image
             if (logoDataUrl) {
                 const img = new window.Image();
                 img.onload = () => {
                     const logoDim = (resolution * logoSize) / 100;
+                    const clearPad = logoDim * 0.15;
+                    const clearX = (resolution - logoDim) / 2 - clearPad;
+                    const clearY = (resolution - logoDim) / 2 - clearPad;
+                    const clearDim = logoDim + clearPad * 2;
+
+                    // Erase the logo zone completely (remove background color too)
+                    ctx.clearRect(clearX, clearY, clearDim, clearDim);
+
                     const cx = (resolution - logoDim) / 2;
                     const cy = (resolution - logoDim) / 2;
 
