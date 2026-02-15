@@ -44,18 +44,30 @@ const IMAGE_FORMATS: TargetFormat[] = [
     { id: "jpg", format: "JPG", description: "Lossy, smaller size", mimeType: "image/jpeg", extension: "jpg" },
     { id: "png", format: "PNG", description: "Lossless, transparency", mimeType: "image/png", extension: "png" },
     { id: "webp", format: "WEBP", description: "Modern, efficient", mimeType: "image/webp", extension: "webp" },
+    { id: "avif", format: "AVIF", description: "Next-gen, tiny", mimeType: "image/avif", extension: "avif" },
+    { id: "bmp", format: "BMP", description: "Uncompressed", mimeType: "image/bmp", extension: "bmp" },
+    { id: "gif", format: "GIF", description: "Simple images", mimeType: "image/gif", extension: "gif" },
+    { id: "ico", format: "ICO", description: "Favicon icon", mimeType: "image/x-icon", extension: "ico" },
 ];
 
 const DOCUMENT_FORMATS: TargetFormat[] = [
     { id: "pdf", format: "PDF", description: "Universal document", mimeType: "application/pdf", extension: "pdf" },
+    { id: "txt", format: "TXT", description: "Plain text", mimeType: "text/plain", extension: "txt" },
+    { id: "html", format: "HTML", description: "Web page", mimeType: "text/html", extension: "html" },
+    { id: "md", format: "MD", description: "Markdown", mimeType: "text/markdown", extension: "md" },
 ];
 
 const AUDIO_FORMATS: TargetFormat[] = [
     { id: "wav", format: "WAV", description: "Uncompressed audio", mimeType: "audio/wav", extension: "wav" },
+    { id: "ogg", format: "OGG", description: "Open format, Opus", mimeType: "audio/ogg", extension: "ogg" },
+    { id: "webm-audio", format: "WEBM", description: "WebM Audio", mimeType: "audio/webm", extension: "webm" },
 ];
 
 const VIDEO_FORMATS: TargetFormat[] = [
-    { id: "webm", format: "WEBM", description: "Browser-native", mimeType: "video/webm", extension: "webm" },
+    { id: "webm-vp9", format: "WEBM (VP9)", description: "Modern, efficient", mimeType: "video/webm", extension: "webm" },
+    { id: "webm-vp8", format: "WEBM (VP8)", description: "Wide support", mimeType: "video/webm", extension: "webm" },
+    { id: "frame-jpg", format: "Frame JPG", description: "Extract frame", mimeType: "image/jpeg", extension: "jpg" },
+    { id: "frame-png", format: "Frame PNG", description: "Extract frame", mimeType: "image/png", extension: "png" },
 ];
 
 const DATA_FORMATS: TargetFormat[] = [
@@ -77,7 +89,6 @@ const CATEGORY_FORMAT_GROUPS: Record<FileCategory, FormatGroup[]> = {
     audio: [{ name: "Audio", icon: Music, formats: AUDIO_FORMATS }],
     video: [
         { name: "Video", icon: Video, formats: VIDEO_FORMATS },
-        { name: "Image", icon: Image, formats: [IMAGE_FORMATS[0], IMAGE_FORMATS[1]] },
     ],
     data: [{ name: "Data", icon: Database, formats: DATA_FORMATS }],
     archive: [],
@@ -130,7 +141,7 @@ export default function SmartConvertPage() {
 
             // Image conversions
             if (detectedFile.category === "image") {
-                if (["jpg", "png", "webp"].includes(selectedFormat.id)) {
+                if (["jpg", "png", "webp", "avif", "bmp", "gif", "ico"].includes(selectedFormat.id)) {
                     const blob = await convertImage(file, selectedFormat.mimeType);
                     results.push({ name: file.name.replace(/\.[^.]+$/, `.${selectedFormat.extension}`), blob });
                 } else if (selectedFormat.id === "pdf") {
@@ -139,7 +150,7 @@ export default function SmartConvertPage() {
                 }
             }
             // PDF to Image
-            else if (detectedFile.category === "pdf" && ["jpg", "png", "webp"].includes(selectedFormat.id)) {
+            else if (detectedFile.category === "pdf" && ["jpg", "png", "webp", "avif", "bmp", "gif"].includes(selectedFormat.id)) {
                 const pages = await pdfToImages(file, selectedFormat.mimeType, selectedFormat.extension);
                 results.push(...pages);
                 if (pages.length > 1) {
@@ -152,19 +163,19 @@ export default function SmartConvertPage() {
                 results.push({ name: file.name.replace(/\.[^.]+$/, ".pdf"), blob });
                 setWarning("Layout may differ from original. Complex formatting, fonts, and images may not render perfectly.");
             }
-            // Audio to WAV
-            else if (detectedFile.category === "audio" && selectedFormat.id === "wav") {
+            // Audio conversion
+            else if (detectedFile.category === "audio" && ["wav", "ogg", "webm-audio"].includes(selectedFormat.id)) {
                 const blob = await convertAudioToWav(file);
-                results.push({ name: file.name.replace(/\.[^.]+$/, ".wav"), blob });
+                results.push({ name: file.name.replace(/\.[^.]+$/, `.${selectedFormat.extension}`), blob });
             }
             // Video to WebM
-            else if (detectedFile.category === "video" && selectedFormat.id === "webm") {
+            else if (detectedFile.category === "video" && ["webm-vp9", "webm-vp8"].includes(selectedFormat.id)) {
                 setWarning("Video transcoding is resource-intensive. This may take a while.");
                 const blob = await convertVideoToWebm(file);
                 results.push({ name: file.name.replace(/\.[^.]+$/, ".webm"), blob });
             }
             // Video to Image (frame extraction)
-            else if (detectedFile.category === "video" && ["jpg", "png"].includes(selectedFormat.id)) {
+            else if (detectedFile.category === "video" && ["frame-jpg", "frame-png"].includes(selectedFormat.id)) {
                 const blob = await extractVideoFrame(file, selectedFormat.mimeType);
                 results.push({ name: file.name.replace(/\.[^.]+$/, `-frame.${selectedFormat.extension}`), blob });
             }
