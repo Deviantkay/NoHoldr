@@ -15,7 +15,7 @@ const tools = [
   { name: "Media", href: "/media", icon: Music, desc: "Audio & video", count: "6" },
   { name: "Convert", href: "/convert", icon: ArrowLeftRight, desc: "Smart format converter", count: "New" },
   { name: "Files", href: "/files", icon: FolderArchive, desc: "ZIP, rename, dedupe", count: "5" },
-  { name: "Data", href: "/data", icon: Database, desc: "CSV, JSON, QR, colors", count: "14" },
+  { name: "Data", href: "/data", icon: Database, desc: "CSV, JSON, QR, colors", count: "16" },
   { name: "AI", href: "/ai", icon: Sparkles, desc: "Your API key", count: "4" },
 ];
 

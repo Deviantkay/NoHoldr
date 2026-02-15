@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LucideIcon } from "lucide-react";
-import { ArrowLeft, FileJson, FileSpreadsheet, Hash, Code, FileText, Binary, QrCode, Palette, KeyRound, ScrollText, Eye, Clock, Braces, LetterText } from "lucide-react";
+import { ArrowLeft, FileJson, FileSpreadsheet, Hash, Code, FileText, Binary, QrCode, Palette, KeyRound, ScrollText, Eye, Clock, Braces, LetterText, Ruler, Pipette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Tool { name: string; href: string; icon: LucideIcon; ready?: boolean; }
@@ -20,6 +20,8 @@ const dataTools: Tool[] = [
     { name: "Timestamp", href: "/data/timestamp", icon: Clock, ready: true },
     { name: "Regex", href: "/data/regex", icon: Braces, ready: true },
     { name: "Word Counter", href: "/data/word-counter", icon: LetterText, ready: true },
+    { name: "Unit Converter", href: "/data/unit-converter", icon: Ruler, ready: true },
+    { name: "Color Extract", href: "/data/color-extractor", icon: Pipette, ready: true },
 ];
 
 function ToolSection({ title, tools }: { title: string; tools: Tool[] }) {
